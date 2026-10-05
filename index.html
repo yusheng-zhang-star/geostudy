@@ -33,7 +33,7 @@ button:disabled {background:#94a3b8; cursor:not-allowed;}
   <div id="clue-area"></div>
   <p style="margin:1rem 0; font-weight:bold;">Score this question: <span id="current-score">--</span></p>
 </div>
-<div id="map" style="display:none;"></div>
+<div id="map"></div>
 <div id="fact-modal" class="modal">
   <div class="modal-content">
     <h3 id="fact-title" style="color:#1e3a8a; margin-bottom:1rem;"></h3>
@@ -79,6 +79,11 @@ const questions = [
   {name:"Timbuktu", lat:16.7666, lng:-3.0026, clues:["I was a legendary trading city in West Africa, famous for gold.","I was the southern terminus of trans-Saharan camel caravans.","I became a center of Islamic scholarship in the 14th century."], fact:"Timbuktu: A key Mali Empire city, where salt from the north was traded for gold from the south."}
 ];
 
+window.onload = function() {
+  map = new maplibregl.Map({container:'map', style:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json', center:[20,30], zoom:1.5});
+  map.on('click', handleMapClick);
+}
+
 let currentQ = 0, totalScore = 0, clueLevel = 1, map, userClickMarker, correctMarker;
 const dailySeed = new Date().toDateString();
 let shuffledQ = [...questions].sort(() => Math.sin(dailySeed.length + Math.random()*10)*1000%1 -0.5).slice(0,5);
@@ -86,13 +91,7 @@ let shuffledQ = [...questions].sort(() => Math.sin(dailySeed.length + Math.rando
 function startQuiz() {
   document.getElementById('start-screen').style.display='none';
   document.getElementById('quiz-screen').style.display='block';
-  document.getElementById('map').style.display='block';
-  setTimeout(()=>{
-    map = new maplibregl.Map({container:'map', style:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json', center:[20,30], zoom:1.5});
-    map.on('load', ()=>{ map.resize(); });
-    map.on('click', handleMapClick);
-    loadQuestion();
-  }, 100);
+  loadQuestion();
 }
 
 function loadQuestion() {
