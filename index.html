@@ -87,13 +87,16 @@ function startQuiz() {
   document.getElementById('start-screen').style.display='none';
   document.getElementById('quiz-screen').style.display='block';
   document.getElementById('map').style.display='block';
-  map = new maplibregl.Map({container:'map', style:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json', center:[20,30], zoom:1.5});
-  map.on('click', handleMapClick);
-  loadQuestion();
+  setTimeout(()=>{
+    map = new maplibregl.Map({container:'map', style:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json', center:[20,30], zoom:1.5});
+    map.on('load', ()=>{ map.resize(); });
+    map.on('click', handleMapClick);
+    loadQuestion();
+  }, 100);
 }
 
 function loadQuestion() {
-  clueLevel=1; totalScore=0;
+  clueLevel=1;
   const q = shuffledQ[currentQ];
   document.getElementById('clue-area').innerHTML = `
     <p style="font-weight:bold; margin-bottom:0.5rem;">Question ${currentQ+1}/5</p>
