@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GeoStudy: Interactive Map Quiz for Classroom</title>
+<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+<style>
+* {margin:0; padding:0; box-sizing:border-box; font-family:system-ui,sans-serif;}
+body {background:#f8fafc; color:#1e293b;}
+.top {background:#1e3a8a; color:white; padding:1rem; text-align:center;}
+#map {width:100%; height:70vh;}
+.panel {max-width:800px; margin:1rem auto; padding:1.5rem; background:white; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.08);}
+.clue {padding:1rem; margin:0.5rem 0; border-radius:8px; background:#f1f5f9;}
+.clue.unlocked {background:#dbeafe;}
+button {background:#1e3a8a; color:white; border:none; padding:0.8rem 1.5rem; border-radius:8px; cursor:pointer; font-size:1rem; margin:0.5rem;}
+button:disabled {background:#94a3b8; cursor:not-allowed;}
+.modal {position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; z-index:1000;}
+.modal-content {background:white; padding:2rem; border-radius:16px; max-width:500px; width:90%;}
+.result-card {background:linear-gradient(135deg,#1e3a8a,#4f46e5); color:white; padding:2rem; border-radius:16px; text-align:center;}
+</style>
+</head>
+<body>
+<div class="top"><h1>🌍 GeoStudy: Daily Map Quiz</h1></div>
+<div id="start-screen" class="panel" style="text-align:center; margin-top:2rem;">
+  <h2 style="margin-bottom:1rem;">Guess the Location from Clues</h2>
+  <p style="margin-bottom:1.5rem; color:#64748b;">Read 3 clues, click on the world map to guess the location. Perfect for classroom practice, homeschool study, and geography fun!</p>
+  <button onclick="startQuiz()">Start Today's Quiz →</button>
+</div>
+<div id="quiz-screen" class="panel" style="display:none;">
+  <div id="clue-area"></div>
+  <p style="margin:1rem 0; font-weight:bold;">Score this question: <span id="current-score">--</span></p>
+</div>
+<div id="map" style="display:none;"></div>
+<div id="fact-modal" class="modal">
+  <div class="modal-content">
+    <h3 id="fact-title" style="color:#1e3a8a; margin-bottom:1rem;"></h3>
+    <p id="fact-text"></p>
+    <button onclick="nextQuestion()" style="margin-top:1.5rem; width:100%;">Next Question →</button>
+  </div>
+</div>
+<div id="result-modal" class="modal">
+  <div class="modal-content" id="result-content">
+    <div class="result-card" id="result-card">
+      <h2 style="margin-bottom:1rem;">Quiz Complete!</h2>
+      <p style="font-size:3rem; font-weight:bold;" id="total-score"></p>
+      <p id="avg-distance" style="margin:1rem 0;"></p>
+    </div>
+    <div style="margin-top:1.5rem; text-align:center;">
+      <button onclick="copyChallengeLink()">Copy Challenge Link</button>
+      <button onclick="downloadScoreCard()">Download Score Card</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const questions = [
+  {name:"Samarkand", lat:39.6542, lng:66.9597, clues:["I was the legendary capital of Timur's empire, a key oasis on the Silk Road.","I sit in the Zarafshan Valley, at the crossroads of China, Persia and the Mediterranean.","Today I am Uzbekistan's second city, famous for turquoise-tiled mosques."], fact:"Samarkand: Flourished as a Silk Road hub from 1000 BCE. Destroyed by Genghis Khan in 1220, later rebuilt as Timur's grand capital."},
+  {name:"Istanbul", lat:41.0082, lng:28.9784, clues:["I was the capital of the Byzantine Empire, the bridge between Europe and Asia.","Emperors ruled here for over 1000 years, controlling trade between the Black Sea and Mediterranean.","Today I am Turkey's largest city, straddling two continents."], fact:"Constantinople/Istanbul: Captured in 1453, became Ottoman capital, a historic crossroads of civilizations."},
+  {name:"Venice", lat:45.4408, lng:12.3155, clues:["I was a powerful maritime republic, dominating Mediterranean trade in the Middle Ages.","My merchants traveled the Silk Road, bringing spices and silk to Europe.","Today I am famous for canals and gondolas."], fact:"Venice: The medieval trading power that connected European markets to Asian luxury goods for centuries."},
+  {name:"Baghdad", lat:33.3152, lng:44.3661, clues:["I was the capital of the Abbasid Caliphate, the center of the Islamic Golden Age.","My House of Wisdom drew scholars from across the world to study math and science.","Today I am the capital of Iraq."], fact:"Baghdad: Founded in 762 CE, became the global center of learning, preserving Greek texts and advancing algebra."},
+  {name:"Cairo", lat:30.0444, lng:31.2357, clues:["I am located on the Nile River, the gateway to Africa.","I grew from a Roman fort into a major trade hub connecting Africa, Europe and Asia.","Nearby sit the Giza Pyramids."], fact:"Cairo: Founded in 969 CE, it became the cultural heart of the Middle East and a key stop on trans-Saharan trade."},
+  {name:"Xi'an", lat:34.3416, lng:108.9398, clues:["I was the eastern starting point of the Silk Road.","I served as the capital of Han and Tang Dynasties, the golden age of ancient China.","Terracotta Warriors are located just outside my city."], fact:"Xi'an (Chang'an): The eastern terminus of the Silk Road, where caravans departed for Central Asia carrying silk."},
+  {name:"Rome", lat:41.9028, lng:12.4964, clues:["I was the capital of the Roman Empire, ruling the entire Mediterranean world.","My roads connected 3 continents, and my law still influences modern legal systems.","The Colosseum sits in my center."], fact:"Rome: At its peak, the empire ruled 20% of the world's population, spreading infrastructure and trade across Europe."},
+  {name:"Athens", lat:37.9838, lng:23.7275, clues:["I am the birthplace of democracy, philosophy and Western science.","Great thinkers like Socrates, Plato and Aristotle taught here.","The Acropolis overlooks my city center."], fact:"Athens: A city-state that laid the intellectual foundation of Western civilization in the 5th century BCE."},
+  {name:"Babylon", lat:32.5422, lng:44.4211, clues:["I was the great capital of ancient Mesopotamia, between the Tigris and Euphrates rivers.","King Hammurabi created one of the earliest written law codes here.","I am said to have had the famous Hanging Gardens."], fact:"Babylon: A major Mesopotamian power that ruled the Near East in the 2nd millennium BCE."},
+  {name:"Luxor (Ancient Thebes)", lat:25.7189, lng:32.6573, clues:["I was the capital of ancient Egypt's New Kingdom, the empire's most powerful era.","Pharaohs built grand temples and tombs in the nearby Valley of the Kings.","I sit on the Nile in southern Egypt."], fact:"Thebes: Home to Tutankhamun, Ramses II, and the Karnak Temple complex."},
+  {name:"Mexico City", lat:19.4326, lng:-99.1332, clues:["I was built on top of the destroyed Aztec capital, a city raised on a lake.","Spanish conquistadors conquered the city in 1521.","Today I am one of the largest cities in the world."], fact:"Tenochtitlan/Mexico City: The Aztec capital was built on an island in Lake Texcoco, one of the largest cities in the pre-Columbian Americas."},
+  {name:"Machu Picchu", lat:-13.1631, lng:-72.545, clues:["I am an abandoned Inca citadel, high in the Andes Mountains.","I was never found by Spanish conquistadors, hidden until 1911.","I sit in modern Peru, above the Urubamba Valley."], fact:"Machu Picchu: A 15th-century Inca royal estate, abandoned during the Spanish conquest."},
+  {name:"Giza", lat:29.9792, lng:31.1342, clues:["I am home to the only surviving Ancient Wonder of the World.","These structures were built as tombs for pharaohs over 4500 years ago.","I sit on the outskirts of Cairo, Egypt."], fact:"Giza Pyramids: Built around 2560 BCE, the Great Pyramid was the tallest human-made structure for over 3800 years."},
+  {name:"Great Wall (Badaling)", lat:40.3594, lng:116.0189, clues:["I am a massive defensive structure built over centuries across northern China.","I stretch over 13,000 miles across mountains and deserts.","I was built to protect Chinese empires from northern invaders."], fact:"Great Wall: Construction began in the 7th century BCE, connected into a single system under the Qin Dynasty."},
+  {name:"Taj Mahal", lat:27.1751, lng:78.0421, clues:["I am a white marble mausoleum built by a Mughal emperor for his wife.","I am located on the Yamuna River in Agra, India.","I am one of the most famous buildings in the world, completed in 1653."], fact:"Taj Mahal: Built by Shah Jahan, it is considered the finest example of Mughal architecture."},
+  {name:"New York City", lat:40.7128, lng:-74.006, clues:["I am the largest city in the United States, a global trade and finance hub.","My Statue of Liberty was a gift from France.","I sit on the East Coast, at the mouth of the Hudson River."], fact:"NYC: Grew from a small Dutch trading post (New Amsterdam) into the world's largest economy city."},
+  {name:"London", lat:51.5074, lng:-0.1278, clues:["I am the capital of the United Kingdom, the center of the former British Empire.","I was the heart of the Industrial Revolution, which transformed the world economy.","I sit on the River Thames."], fact:"London: A Roman-founded city that became the capital of the largest empire in history."},
+  {name:"Paris", lat:48.8566, lng:2.3522, clues:["I am the capital of France, a center of art, philosophy and revolution.","The Enlightenment movement shaped modern democracy from my salons.","The Eiffel Tower overlooks my city, on the Seine River."], fact:"Paris: Founded as a Roman town, grew into the cultural capital of Europe."},
+  {name:"Mecca", lat:21.4225, lng:39.8262, clues:["I am the holiest city of Islam, the destination of the Hajj pilgrimage.","I was a key stop on the ancient incense trade route across the Arabian Peninsula.","I am located in modern Saudi Arabia."], fact:"Mecca: Birthplace of the Prophet Muhammad, it remains the spiritual center of the Islamic world."},
+  {name:"Timbuktu", lat:16.7666, lng:-3.0026, clues:["I was a legendary trading city in West Africa, famous for gold.","I was the southern terminus of trans-Saharan camel caravans.","I became a center of Islamic scholarship in the 14th century."], fact:"Timbuktu: A key Mali Empire city, where salt from the north was traded for gold from the south."}
+];
+
+let currentQ = 0, totalScore = 0, clueLevel = 1, map, userClickMarker, correctMarker;
+const dailySeed = new Date().toDateString();
+let shuffledQ = [...questions].sort(() => Math.sin(dailySeed.length + Math.random()*10)*1000%1 -0.5).slice(0,5);
+
+function startQuiz() {
+  document.getElementById('start-screen').style.display='none';
+  document.getElementById('quiz-screen').style.display='block';
+  document.getElementById('map').style.display='block';
+  map = new maplibregl.Map({container:'map', style:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json', center:[20,30], zoom:1.5});
+  map.on('click', handleMapClick);
+  loadQuestion();
+}
+
+function loadQuestion() {
+  clueLevel=1; totalScore=0;
+  const q = shuffledQ[currentQ];
+  document.getElementById('clue-area').innerHTML = `
+    <p style="font-weight:bold; margin-bottom:0.5rem;">Question ${currentQ+1}/5</p>
+    <div class="clue unlocked">Clue 1: ${q.clues[0]}</div>
+    <div class="clue" id="clue2">Clue 2: 🔒 (guess wrong to unlock)</div>
+    <div class="clue" id="clue3">Clue 3: 🔒 (guess again to unlock)</div>
+  `;
+  document.getElementById('current-score').textContent='--';
+  if(userClickMarker) userClickMarker.remove();
+  if(correctMarker) correctMarker.remove();
+}
+
+function haversine(lat1,lon1,lat2,lon2) {
+  const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function handleMapClick(e) {
+  const q = shuffledQ[currentQ];
+  const dist = haversine(e.lngLat.lat, e.lngLat.lng, q.lat, q.lng);
+  let score;
+  if(dist<=50) score=100;
+  else if(dist>=2000) score=0;
+  else score = Math.round(100 - ((dist-50)/(2000-50))*100);
+  totalScore+=score;
+  document.getElementById('current-score').textContent = `${score} / 100 (${Math.round(dist)} km away)`;
+  userClickMarker = new maplibregl.Marker({color:'#ef4444'}).setLngLat([e.lngLat.lng,e.lngLat.lat]).addTo(map);
+  correctMarker = new maplibregl.Marker({color:'#10b981'}).setLngLat([q.lng,q.lat]).addTo(map);
+  document.getElementById('fact-title').textContent = `Answer: ${q.name} (Score: ${score})`;
+  document.getElementById('fact-text').textContent = q.fact;
+  document.getElementById('fact-modal').style.display='flex';
+}
+
+function nextQuestion() {
+  document.getElementById('fact-modal').style.display='none';
+  currentQ++;
+  if(currentQ>=5) return showResults();
+  loadQuestion();
+}
+
+function showResults() {
+  document.getElementById('result-modal').style.display='flex';
+  document.getElementById('total-score').textContent = totalScore;
+  let msg = totalScore>400 ? "Master Geographer!" : totalScore>250 ? "Great Job!" : "Keep Practicing!";
+  document.getElementById('avg-distance').textContent = `${msg} Average score: ${Math.round(totalScore/5)}/100`;
+}
+
+async function copyChallengeLink() {
+  await navigator.clipboard.writeText(`I scored ${totalScore}/500 on GeoStudy daily map quiz! Can you beat me? https://geostudy.sendafun.com/`);
+  alert('Challenge link copied!');
+}
+
+function downloadScoreCard() {
+  html2canvas(document.getElementById('result-card')).then(canvas=>{
+    const a=document.createElement('a');
+    a.href=canvas.toDataURL('image/png');
+    a.download='geostudy-score.png';
+    a.click();
+  });
+}
+</script>
+</body>
+</html>
